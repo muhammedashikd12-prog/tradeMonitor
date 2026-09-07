@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NIFTY Iron Condor Live Monitor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><div class="eyebrow">MANUAL POSITION MONITOR</div><h1>NIFTY IRON CONDOR <span>LIVE MONITOR</span></h1></div>
+    <div class="connection-stack"><span class="connection disconnected" id="connection">● DISCONNECTED</span><button class="connect-button" id="connect-fyers">Connect FYERS</button><span class="subtle" id="last-update">Waiting for setup</span></div>
+  </header>
+  <main>
+    <section class="setup panel">
+      <div class="section-heading"><div><span class="eyebrow">01 / POSITION</span><h2>Enter your four legs</h2></div><button class="text-button" id="clear-position">Clear position</button></div>
+      <form id="setup-form">
+        <div class="setup-meta"><label>Expiry <input id="expiry" type="date" required></label><label>Call side SL <input id="call-sl" type="number" min="0" step="0.01" placeholder="Optional ₹"></label><label>Put side SL <input id="put-sl" type="number" min="0" step="0.01" placeholder="Optional ₹"></label></div>
+        <div class="leg-grid">
+          <fieldset class="leg-card buy"><legend>CALL BUY <small>HEDGE</small></legend><input data-leg="CALL BUY" data-field="symbol" placeholder="Fyers symbol" required><div class="compact-inputs"><input data-leg="CALL BUY" data-field="strike" type="number" placeholder="Strike" required><input data-leg="CALL BUY" data-field="quantity" type="number" min="1" placeholder="Qty" required><input data-leg="CALL BUY" data-field="entry_price" type="number" min="0" step="0.05" placeholder="Entry ₹" required></div></fieldset>
+          <fieldset class="leg-card sell"><legend>CALL SELL <small>SHORT</small></legend><input data-leg="CALL SELL" data-field="symbol" placeholder="Fyers symbol" required><div class="compact-inputs"><input data-leg="CALL SELL" data-field="strike" type="number" placeholder="Strike" required><input data-leg="CALL SELL" data-field="quantity" type="number" min="1" placeholder="Qty" required><input data-leg="CALL SELL" data-field="entry_price" type="number" min="0" step="0.05" placeholder="Entry ₹" required></div></fieldset>
+          <fieldset class="leg-card sell"><legend>PUT SELL <small>SHORT</small></legend><input data-leg="PUT SELL" data-field="symbol" placeholder="Fyers symbol" required><div class="compact-inputs"><input data-leg="PUT SELL" data-field="strike" type="number" placeholder="Strike" required><input data-leg="PUT SELL" data-field="quantity" type="number" min="1" placeholder="Qty" required><input data-leg="PUT SELL" data-field="entry_price" type="number" min="0" step="0.05" placeholder="Entry ₹" required></div></fieldset>
+          <fieldset class="leg-card buy"><legend>PUT BUY <small>HEDGE</small></legend><input data-leg="PUT BUY" data-field="symbol" placeholder="Fyers symbol" required><div class="compact-inputs"><input data-leg="PUT BUY" data-field="strike" type="number" placeholder="Strike" required><input data-leg="PUT BUY" data-field="quantity" type="number" min="1" placeholder="Qty" required><input data-leg="PUT BUY" data-field="entry_price" type="number" min="0" step="0.05" placeholder="Entry ₹" required></div></fieldset>
+        </div>
+        <div class="setup-actions"><span class="form-message" id="form-message"></span><button class="button primary" type="submit">Save position &amp; monitor</button></div>
+      </form>
+    </section>
+    <section class="market-strip panel"><div><span>NIFTY SPOT</span><strong id="spot">—</strong></div><div><span>NIFTY CHANGE</span><strong id="spot-change">—</strong></div><div><span>EXPIRY</span><strong id="expiry-label">—</strong></div><div><span>TIME REMAINING</span><strong id="time-left">—</strong></div></section>
+    <section class="hero panel"><span class="eyebrow">TOTAL POSITION P&amp;L</span><strong id="total-pnl">—</strong><div class="hero-foot"><span>Today's P&amp;L</span><span id="today-pnl">—</span></div></section>
+    <section class="panel"><div class="section-heading compact-heading"><div><span class="eyebrow">02 / LIVE LEGS</span><h2>Position monitor</h2></div><span class="subtle">Auto-refresh every 3 seconds</span></div><div class="table-wrap"><table><thead><tr><th>Leg</th><th>Strike</th><th>Entry</th><th>LTP</th><th>Qty</th><th>Bid / Ask</th><th>Live P&amp;L</th></tr></thead><tbody id="legs-body"><tr><td colspan="7" class="empty">Enter your position above to begin.</td></tr></tbody></table></div></section>
+    <section class="two-column">
+      <div class="panel card-padding"><div class="section-heading compact-heading"><div><span class="eyebrow">03 / RISK MAP</span><h2>Iron Condor map</h2></div><span class="risk-badge safe" id="risk-badge">SAFE</span></div><div class="map-labels"><span>LOWER HEDGE</span><span>NIFTY</span><span>UPPER HEDGE</span></div><div class="ladder"><i class="ladder-line"></i><b class="mark lower-hedge">—</b><b class="mark lower-short">—</b><b class="mark lower-be">—</b><b class="spot-mark">●</b><b class="mark upper-be">—</b><b class="mark upper-short">—</b><b class="mark upper-hedge">—</b></div><div class="distance-grid"><div><span>To Put Short</span><strong id="distance-put">—</strong></div><div><span>To Call Short</span><strong id="distance-call">—</strong></div><div><span>To Lower BE</span><strong id="distance-lower-be">—</strong></div><div><span>To Upper BE</span><strong id="distance-upper-be">—</strong></div></div></div>
+      <div class="panel card-padding"><span class="eyebrow">POSITION MATH</span><h2>Premium &amp; spreads</h2><div class="metric-list"><div><span>Call credit</span><strong id="call-credit">—</strong></div><div><span>Put credit</span><strong id="put-credit">—</strong></div><div><span>Total net credit</span><strong id="net-credit">—</strong></div><div><span>Maximum initial profit</span><strong id="max-profit">—</strong></div><div class="split"><span>Call spread P&amp;L <strong id="call-spread-pnl">—</strong></span><span>Put spread P&amp;L <strong id="put-spread-pnl">—</strong></span></div></div></div>
+    </section>
+    <section class="three-column">
+      <div class="panel card-padding"><span class="eyebrow">IV MONITOR</span><h2>Short IV</h2><div class="iv-row"><span>Call sell</span><strong id="call-iv">—</strong></div><div class="iv-row"><span>Put sell</span><strong id="put-iv">—</strong></div><div class="iv-row"><span>Average / change</span><strong id="average-iv">—</strong></div></div>
+      <div class="panel card-padding"><span class="eyebrow">MANUAL RISK</span><h2>Alert-only stops</h2><div class="iv-row"><span>Call SL / current</span><strong id="call-sl-status">—</strong></div><div class="iv-row"><span>Put SL / current</span><strong id="put-sl-status">—</strong></div><p class="subtle note">No exit orders are placed by this monitor.</p></div>
+      <div class="panel card-padding"><span class="eyebrow">ALERTS</span><h2>What needs attention</h2><ul class="alerts" id="alerts"><li class="subtle">No alerts.</li></ul></div>
+    </section>
+  </main>
+  <footer>Manual input · FYERS live data · P&amp;L and risk visibility · no automatic trades</footer>
+  <script src="app.js"></script>
+</body>
+</html>
