@@ -238,11 +238,19 @@ def manual_monitor():
 
 
 # ---------------- Raw option chain (for the Option Chain screen) ----------------
-@app.get("/chain")
-def chain_endpoint(symbol: str = "NSE:NIFTY50-INDEX"):
+@app.get("/expiries")
+def expiries_endpoint(symbol: str = "NSE:NIFTY50-INDEX"):
     try:
-        expiry = broker.get_nearest_expiry(symbol)
-        chain = broker.get_option_chain(symbol, expiry)
+        return {"expiries": broker.get_expiries(symbol)}
+    except BrokerConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"Broker/data unavailable: {e}")
+
+
+@app.get("/chain")
+def chain_endpoint(symbol: str = "NSE:NIFTY50-INDEX", expiry: str | None = None):
+    try:
+        selected_expiry = expiry or broker.get_nearest_expiry(symbol)
+        chain = broker.get_option_chain(symbol, selected_expiry)
     except BrokerConnectionError as e:
         raise HTTPException(status_code=503, detail=f"Broker/data unavailable: {e}")
     return chain.model_dump(mode="json")

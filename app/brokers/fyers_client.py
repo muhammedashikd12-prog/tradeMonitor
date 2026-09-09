@@ -130,6 +130,22 @@ class FyersClient(BrokerClient):
         self._expiry_timestamps[expiry] = str(nearest["expiry"])
         return expiry
 
+    def get_expiries(self, symbol: str) -> list[dict[str, str]]:
+        """Return all broker-provided future expiries and cache their timestamps."""
+        self._require_connected()
+        resp = self._fyers.optionchain({"symbol": symbol, "strikecount": 1, "timestamp": ""})
+        if resp.get("s") != "ok":
+            raise BrokerConnectionError(f"Fyers option chain error: {resp}")
+        expiries = []
+        for item in resp.get("data", {}).get("expiryData", []):
+            expiry_date = datetime.strptime(item["date"], "%d-%m-%Y").date()
+            expiry = expiry_date.isoformat()
+            self._expiry_timestamps[expiry] = str(item["expiry"])
+            expiries.append({"value": expiry, "label": expiry_date.strftime("%d %b %Y")})
+        if not expiries:
+            raise BrokerConnectionError("No expiry data returned by broker")
+        return expiries
+
     def get_option_chain(self, symbol: str, expiry: str) -> OptionChainSnapshot:
         self._require_connected()
         timestamp = self._expiry_timestamps.get(expiry, expiry)

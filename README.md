@@ -46,6 +46,9 @@ frontend/
 
 ## Setup — backend
 
+On Windows, double-click `start_server.bat` to start the backend and open the dashboard.
+Install dependencies first with `pip install -r requirements.txt` if this is a fresh checkout.
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # fill in your Fyers app_id / secret / redirect_uri, and NIFTY_LOT_SIZE
