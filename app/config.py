@@ -3,11 +3,17 @@ Central, mutable settings. Loaded from .env at boot, but every threshold is
 also re-writable at runtime via the /settings endpoint (persisted to SQLite)
 so the "make thresholds configurable" requirement is real, not just env vars.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
     # --- Fyers ---
     fyers_app_id: str = ""
     fyers_secret_id: str = ""
