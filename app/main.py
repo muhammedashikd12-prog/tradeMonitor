@@ -24,7 +24,7 @@ from app.services import journal_service, notification_service, execution_engine
 from app.services import market_data_service
 from app.services.iron_condor_calculations import (
     calculate_position, calculate_fund_requirement, calculate_paper_execution_price,
-    calculate_position_charges,
+    calculate_position_charges, calculate_advance_sl, advance_sl_state,
 )
 
 app = FastAPI(title="Condor AI")
@@ -198,7 +198,9 @@ def setup_manual_monitor(payload: ManualMonitorSetup):
         requested_entries=requested_entries,
     )
     _save_manual_mode(mode_key)
-    return {"saved": True, "expiry": payload.expiry.isoformat(), "mode": payload.mode, "position_id": _manual_active_history_id, "legs": [leg.model_dump() for leg in payload.legs]}
+    return {"saved": True, "expiry": payload.expiry.isoformat(), "mode": payload.mode, "position_id": _manual_active_history_id,
+            "advance_sl": _advance_sl_payload({leg.leg: leg for leg in payload.legs}, spot),
+            "legs": [leg.model_dump() for leg in payload.legs]}
 
 
 @app.delete("/manual-monitor/setup")
@@ -241,11 +243,60 @@ def manual_history():
     return [_coerce_history_entry(row) for row in rows]
 
 
+@app.delete("/manual-monitor/history/{position_id}")
+def delete_manual_history(position_id: str):
+    """Delete only the local history row; never closes a broker position."""
+    db = SessionLocal()
+    try:
+        row = db.query(PositionHistoryEntry).filter_by(position_id=position_id).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Trading history record not found")
+        db.delete(row)
+        db.commit()
+        return {"deleted": True, "position_id": position_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unable to delete trading history: {exc}")
+    finally:
+        db.close()
+
+
 def _quote_value(quote: dict, *keys: str):
     for key in keys:
         if quote.get(key) is not None:
             return quote[key]
     return None
+
+
+def _advance_sl_payload(legs: dict[str, ManualLeg], spot: float | None = None) -> dict:
+    result = calculate_advance_sl(legs)
+    output = {}
+    for name, side in (("call", "CALL"), ("put", "PUT")):
+        item = result[name]
+        trigger = item["sl_trigger_price"]
+        output[name] = item | {
+            "side": side,
+            "distance": (trigger - spot if side == "CALL" else spot - trigger) if trigger is not None and spot is not None else None,
+        }
+    return {"sl_multiplier": settings.sl_multiple_of_credit, "call": output["call"], "put": output["put"]}
+
+
+@app.post("/manual-monitor/preview")
+def preview_manual_monitor(payload: ManualMonitorSetup):
+    """Return advance SL values while the four-leg ticket is being edited."""
+    by_name = {leg.leg: leg for leg in payload.legs}
+    expected = {"CALL BUY", "CALL SELL", "PUT SELL", "PUT BUY"}
+    if set(by_name) != expected or len(payload.legs) != 4:
+        return {"available": False, "message": "Enter all four legs to calculate SL"}
+    spot = None
+    if broker.is_connected():
+        try:
+            spot = _quote_value(broker.get_quotes(["NSE:NIFTY50-INDEX"]).get("NSE:NIFTY50-INDEX", {}), "lp")
+        except BrokerConnectionError:
+            pass
+    return {"available": True, "spot": spot, **_advance_sl_payload(by_name, spot)}
 
 
 def _fyers_basket_orders(legs: list[ManualLeg]) -> list[dict]:
@@ -346,6 +397,26 @@ def _coerce_history_entry(row: PositionHistoryEntry) -> dict:
         "initial_net_credit": row.initial_net_credit,
         "call_sl": row.call_sl,
         "put_sl": row.put_sl,
+        "call_net_credit": row.call_net_credit,
+        "call_max_profit": row.call_max_profit,
+        "call_sl_multiplier": row.call_sl_multiplier,
+        "call_sl_loss": row.call_sl_loss,
+        "call_sl_trigger_price": row.call_sl_trigger_price,
+        "call_sl_triggered": bool(row.call_sl_triggered),
+        "call_sl_trigger_time": row.call_sl_trigger_time.isoformat() if row.call_sl_trigger_time else None,
+        "call_exit_price": row.call_exit_price,
+        "call_final_pnl": row.call_final_pnl,
+        "call_sl_state": row.call_sl_state or "ACTIVE",
+        "put_net_credit": row.put_net_credit,
+        "put_max_profit": row.put_max_profit,
+        "put_sl_multiplier": row.put_sl_multiplier,
+        "put_sl_loss": row.put_sl_loss,
+        "put_sl_trigger_price": row.put_sl_trigger_price,
+        "put_sl_triggered": bool(row.put_sl_triggered),
+        "put_sl_trigger_time": row.put_sl_trigger_time.isoformat() if row.put_sl_trigger_time else None,
+        "put_exit_price": row.put_exit_price,
+        "put_final_pnl": row.put_final_pnl,
+        "put_sl_state": row.put_sl_state or "ACTIVE",
         "entry_nifty_spot": row.entry_nifty_spot,
         "final_nifty_spot": row.final_nifty_spot,
         "opened_at": row.opened_at.isoformat() if row.opened_at else None,
@@ -370,6 +441,7 @@ def _persist_manual_position_entry(setup: ManualMonitorSetup, live_ltp_map: dict
     }
     call_credit = calculations["call_credit"]["total"]
     put_credit = calculations["put_credit"]["total"]
+    advance = calculate_advance_sl(by_name)
     position_id = f"IC-{setup.mode}-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{abs(hash(setup.expiry.isoformat() + ''.join(leg.symbol for leg in setup.legs))) % 100000:05d}"
     db = SessionLocal()
     try:
@@ -393,6 +465,12 @@ def _persist_manual_position_entry(setup: ManualMonitorSetup, live_ltp_map: dict
             initial_net_credit=call_credit + put_credit,
             call_sl=setup.call_sl if setup.call_sl is not None else calculations["call_sl_default"],
             put_sl=setup.put_sl if setup.put_sl is not None else calculations["put_sl_default"],
+            call_net_credit=advance["call"]["net_credit"], call_max_profit=advance["call"]["max_profit"],
+            call_sl_multiplier=advance["call"]["sl_multiplier"], call_sl_loss=advance["call"]["sl_loss"],
+            call_sl_trigger_price=advance["call"]["sl_trigger_price"], call_sl_triggered=0,
+            call_sl_state="ACTIVE", put_net_credit=advance["put"]["net_credit"], put_max_profit=advance["put"]["max_profit"],
+            put_sl_multiplier=advance["put"]["sl_multiplier"], put_sl_loss=advance["put"]["sl_loss"],
+            put_sl_trigger_price=advance["put"]["sl_trigger_price"], put_sl_triggered=0, put_sl_state="ACTIVE",
             entry_nifty_spot=spot,
             opened_at=datetime.utcnow(),
             realized_pnl=0.0,
@@ -487,6 +565,7 @@ def _manual_snapshot() -> dict:
             "oi": _quote_value(quote, "oi"), "iv": _quote_value(quote, "iv"),
         })
     calculations = calculate_position(by_name, live_ltps)
+    advance = calculate_advance_sl(by_name)
     for leg in live_legs:
         leg["pnl"] = calculations["pnl"][leg["leg"]]
     # Once an active trade is entered, its entry prices (including paper
@@ -533,12 +612,31 @@ def _manual_snapshot() -> dict:
         alerts.append(f"Large NIFTY movement: {spot_move:+.0f} points")
     if iv_change is not None and iv_change >= 2:
         alerts.append(f"Short IV increased by {iv_change:.1f} points")
-    call_sl = _manual_monitor.call_sl if _manual_monitor.call_sl is not None else calculations["call_sl_default"]
-    put_sl = _manual_monitor.put_sl if _manual_monitor.put_sl is not None else calculations["put_sl_default"]
-    if calculations["call_spread_pnl"] <= -abs(call_sl):
-        alerts.append("CALL SL HIT")
-    if calculations["put_spread_pnl"] <= -abs(put_sl):
-        alerts.append("PUT SL HIT")
+    history_row = None
+    if _manual_active_history_id is not None:
+        db = SessionLocal()
+        try:
+            history_row = db.query(PositionHistoryEntry).filter_by(position_id=_manual_active_history_id).first()
+        finally:
+            db.close()
+    call_complete = live_ltps.get("CALL SELL") is not None and live_ltps.get("CALL BUY") is not None
+    put_complete = live_ltps.get("PUT SELL") is not None and live_ltps.get("PUT BUY") is not None
+    call_pnl = calculations["call_spread_pnl"] if call_complete else None
+    put_pnl = calculations["put_spread_pnl"] if put_complete else None
+    call_state, call_new_trigger = advance_sl_state(
+        call_pnl, advance["call"]["sl_loss"], spot, advance["call"]["sl_trigger_price"], "CALL",
+        history_row.call_sl_state if history_row else "ACTIVE")
+    put_state, put_new_trigger = advance_sl_state(
+        put_pnl, advance["put"]["sl_loss"], spot, advance["put"]["sl_trigger_price"], "PUT",
+        history_row.put_sl_state if history_row else "ACTIVE")
+    if call_new_trigger:
+        alerts.append("CALL SIDE SL TRIGGERED")
+    elif call_state == "APPROACHING_SL":
+        alerts.append("CALL SL APPROACHING")
+    if put_new_trigger:
+        alerts.append("PUT SIDE SL TRIGGERED")
+    elif put_state == "APPROACHING_SL":
+        alerts.append("PUT SL APPROACHING")
     expiry_at = datetime.combine(_manual_monitor.expiry, date_time(15, 30))
     seconds_left = max(0, int((expiry_at - datetime.now()).total_seconds()))
     if seconds_left == 0:
@@ -555,6 +653,20 @@ def _manual_snapshot() -> dict:
                 row.realized_pnl = calculations["total_pnl"]
                 row.net_pnl = calculations["total_pnl"] - row.charges
                 row.mode = _manual_monitor.mode
+                row.call_sl_state = call_state
+                row.put_sl_state = put_state
+                if call_new_trigger and not row.call_sl_triggered:
+                    row.call_sl_triggered = 1
+                    row.call_sl_trigger_time = datetime.utcnow()
+                    row.call_exit_price = live_ltps.get("CALL SELL")
+                    row.call_final_pnl = call_pnl
+                    row.reason_for_closing = "SL"
+                if put_new_trigger and not row.put_sl_triggered:
+                    row.put_sl_triggered = 1
+                    row.put_sl_trigger_time = datetime.utcnow()
+                    row.put_exit_price = live_ltps.get("PUT SELL")
+                    row.put_final_pnl = put_pnl
+                    row.reason_for_closing = "SL"
                 db.commit()
         finally:
             db.close()
@@ -571,8 +683,14 @@ def _manual_snapshot() -> dict:
             "distance_call_short": distance_call, "distance_put_short": distance_put,
             "distance_lower_breakeven": distance_lower_be, "distance_upper_breakeven": distance_upper_be,
             "risk": risk, "call_iv": call_iv, "put_iv": put_iv, "average_short_iv": average_iv,
-            "iv_change": iv_change, "seconds_to_expiry": seconds_left, "call_sl": call_sl,
-            "put_sl": put_sl, "alerts": alerts,
+            "iv_change": iv_change, "seconds_to_expiry": seconds_left,
+            "call_sl": advance["call"]["sl_loss"], "put_sl": advance["put"]["sl_loss"],
+            "sl_multiplier": settings.sl_multiple_of_credit,
+            "advance_sl": _advance_sl_payload(by_name, spot),
+            "call_sl_state": call_state, "put_sl_state": put_state,
+            "call_sl_triggered": bool(history_row.call_sl_triggered) if history_row else call_new_trigger,
+            "put_sl_triggered": bool(history_row.put_sl_triggered) if history_row else put_new_trigger,
+            "alerts": alerts,
             "fund_requirement": fund_requirement,
             "fund_requirement_market": calculate_fund_requirement(by_name, mode="LIVE"),
             "fund_requirement_paper": calculate_fund_requirement(by_name, mode="LIVE"),

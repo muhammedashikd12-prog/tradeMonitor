@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     iv_high_max: float = 22.0
 
     # --- Stop loss / profit booking ---
-    sl_multiple_of_credit: float = 1.5   # exit a vertical if its loss > 1.5x credit received
+    sl_multiple_of_credit: float = 3.0   # advance SL loss = max profit x this multiplier
     profit_booking_pct: float = 75.0     # evaluate exit once this % of credit is captured
 
     # --- Time-of-day windows (IST, 24h "HH:MM") ---

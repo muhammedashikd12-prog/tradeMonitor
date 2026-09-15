@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from app.services.iron_condor_calculations import calculate_position
+from app.services.iron_condor_calculations import calculate_position, calculate_advance_sl, advance_sl_state
 
 
 def _legs():
@@ -32,3 +32,25 @@ class IronCondorCalculationTests(unittest.TestCase):
         self.assertEqual(result["call_spread_pnl"], -50)
         self.assertEqual(result["put_spread_pnl"], 25)
         self.assertEqual(result["total_pnl"], -25)
+
+    def test_advance_sl_calculates_credit_profit_and_loss(self):
+        result = calculate_advance_sl(_legs())
+        self.assertEqual(result["call"]["net_credit"], 6)
+        self.assertEqual(result["call"]["max_profit"], 150)
+        self.assertEqual(result["call"]["sl_loss"], 450)
+        self.assertEqual(result["put"]["sl_loss"], 450)
+        self.assertEqual(result["call"]["sl_trigger_price"], 22018)
+        self.assertEqual(result["put"]["sl_trigger_price"], 20982)
+
+    def test_advance_sl_rejects_invalid_credit_and_quantity(self):
+        legs = _legs()
+        legs["CALL BUY"].entry_price = 12
+        self.assertIsNone(calculate_advance_sl(legs)["call"]["sl_trigger_price"])
+        legs = _legs()
+        legs["CALL BUY"].quantity = 20
+        self.assertIsNone(calculate_advance_sl(legs)["call"]["sl_trigger_price"])
+
+    def test_advance_sl_state_does_not_duplicate_trigger(self):
+        state, triggered = advance_sl_state(-450, 450, 22018, 22018, "CALL")
+        self.assertEqual((state, triggered), ("SL_TRIGGERED", True))
+        self.assertEqual(advance_sl_state(-500, 450, 22020, 22018, "CALL", state), ("SL_TRIGGERED", False))

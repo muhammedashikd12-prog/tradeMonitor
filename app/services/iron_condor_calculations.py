@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config import settings
+
 
 def leg_pnl(leg: Any, ltp: float | None) -> float | None:
     if ltp is None:
@@ -16,6 +18,59 @@ def side_credit(short_leg: Any, hedge_leg: Any) -> dict[str, float]:
     total = (short_leg.entry_price * short_leg.quantity) - (hedge_leg.entry_price * hedge_leg.quantity)
     per_unit = total / short_leg.quantity if short_leg.quantity else 0.0
     return {"per_unit": per_unit, "total": total}
+
+
+def calculate_vertical_sl(short_leg: Any, hedge_leg: Any, sl_multiplier: float | None = None) -> dict[str, float | str | None]:
+    """Calculate one vertical's loss limit and expiry-intrinsic trigger.
+
+    The trigger solves the same spread P&L equation used by the monitor using
+    expiry intrinsic values. It is unavailable when the requested loss cannot
+    be reached within the spread width or the legs are invalid.
+    """
+    multiplier = float(settings.sl_multiple_of_credit if sl_multiplier is None else sl_multiplier)
+    if multiplier <= 0 or short_leg.quantity <= 0 or hedge_leg.quantity <= 0:
+        return {"net_credit": 0.0, "max_profit": 0.0, "sl_multiplier": multiplier,
+                "sl_loss": 0.0, "sl_trigger_price": None, "error": "Invalid quantity or multiplier"}
+    if short_leg.entry_price <= 0 or hedge_leg.entry_price <= 0:
+        return {"net_credit": 0.0, "max_profit": 0.0, "sl_multiplier": multiplier,
+                "sl_loss": 0.0, "sl_trigger_price": None, "error": "Missing option prices"}
+    if short_leg.quantity != hedge_leg.quantity:
+        return {"net_credit": 0.0, "max_profit": 0.0, "sl_multiplier": multiplier,
+                "sl_loss": 0.0, "sl_trigger_price": None, "error": "Leg quantities must match"}
+    credit = float(short_leg.entry_price - hedge_leg.entry_price)
+    max_profit = credit * short_leg.quantity
+    sl_loss = max_profit * multiplier
+    width = abs(float(short_leg.strike) - float(hedge_leg.strike))
+    loss_per_unit = sl_loss / short_leg.quantity if short_leg.quantity else 0.0
+    if credit <= 0 or width <= 0 or loss_per_unit >= width:
+        return {"net_credit": credit, "max_profit": max_profit, "sl_multiplier": multiplier,
+                "sl_loss": sl_loss, "sl_trigger_price": None, "error": "SL loss is not reachable within spread"}
+    is_call = "CALL" in short_leg.leg
+    trigger = (float(short_leg.strike) + loss_per_unit) if is_call else (float(short_leg.strike) - loss_per_unit)
+    return {"net_credit": credit, "max_profit": max_profit, "sl_multiplier": multiplier,
+            "sl_loss": sl_loss, "sl_trigger_price": trigger, "error": None}
+
+
+def calculate_advance_sl(legs: dict[str, Any], sl_multiplier: float | None = None) -> dict[str, dict[str, float | str | None]]:
+    return {
+        "call": calculate_vertical_sl(legs["CALL SELL"], legs["CALL BUY"], sl_multiplier),
+        "put": calculate_vertical_sl(legs["PUT SELL"], legs["PUT BUY"], sl_multiplier),
+    }
+
+
+def advance_sl_state(current_pnl: float | None, sl_loss: float | None, spot: float | None,
+                     trigger: float | None, side: str, previous: str = "ACTIVE") -> tuple[str, bool]:
+    """Return the next independent side state and whether it newly triggered."""
+    if previous in {"SL_TRIGGERED", "EXIT_PENDING", "EXITED"}:
+        return previous, False
+    if current_pnl is None or sl_loss is None or trigger is None or spot is None:
+        return "ACTIVE", False
+    breached = current_pnl <= -abs(sl_loss)
+    distance = (trigger - spot) if side == "CALL" else (spot - trigger)
+    approaching = distance <= max(25.0, abs(trigger) * 0.0025)
+    if breached:
+        return "SL_TRIGGERED", True
+    return ("APPROACHING_SL" if approaching else "ACTIVE"), False
 
 
 def calculate_fyers_leg_charges(price: float, quantity: int, side: str) -> float:
@@ -127,8 +182,8 @@ def calculate_position(legs: dict[str, Any], live_ltps: dict[str, float | None])
         "total_pnl": call_spread + put_spread,
         "lower_breakeven": put_sell.strike - net_credit_per_unit,
         "upper_breakeven": call_sell.strike + net_credit_per_unit,
-        "call_sl_default": call_credit["total"] * 3,
-        "put_sl_default": put_credit["total"] * 3,
+        "call_sl_default": call_credit["total"] * settings.sl_multiple_of_credit,
+        "put_sl_default": put_credit["total"] * settings.sl_multiple_of_credit,
     }
 
 

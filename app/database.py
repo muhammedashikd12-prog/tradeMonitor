@@ -1,6 +1,6 @@
 """SQLite-backed persistence: trade journal, runtime settings overrides,
 and daily P&L (needed by the daily-loss-limit / drawdown engines)."""
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import csv
@@ -60,6 +60,26 @@ class PositionHistoryEntry(Base):
     initial_net_credit = Column(Float, nullable=True)
     call_sl = Column(Float, nullable=True)
     put_sl = Column(Float, nullable=True)
+    call_net_credit = Column(Float, nullable=True)
+    call_max_profit = Column(Float, nullable=True)
+    call_sl_multiplier = Column(Float, nullable=True)
+    call_sl_loss = Column(Float, nullable=True)
+    call_sl_trigger_price = Column(Float, nullable=True)
+    call_sl_triggered = Column(Integer, default=0)
+    call_sl_trigger_time = Column(DateTime, nullable=True)
+    call_exit_price = Column(Float, nullable=True)
+    call_final_pnl = Column(Float, nullable=True)
+    call_sl_state = Column(String, default="ACTIVE")
+    put_net_credit = Column(Float, nullable=True)
+    put_max_profit = Column(Float, nullable=True)
+    put_sl_multiplier = Column(Float, nullable=True)
+    put_sl_loss = Column(Float, nullable=True)
+    put_sl_trigger_price = Column(Float, nullable=True)
+    put_sl_triggered = Column(Integer, default=0)
+    put_sl_trigger_time = Column(DateTime, nullable=True)
+    put_exit_price = Column(Float, nullable=True)
+    put_final_pnl = Column(Float, nullable=True)
+    put_sl_state = Column(String, default="ACTIVE")
     entry_nifty_spot = Column(Float, nullable=True)
     final_nifty_spot = Column(Float, nullable=True)
     opened_at = Column(DateTime, nullable=True)
@@ -94,6 +114,15 @@ class SettingOverride(Base):
 
 
 Base.metadata.create_all(engine)
+
+# create_all does not add columns to an existing SQLite database. Keep the
+# lightweight local database compatible with upgrades without dropping history.
+with engine.begin() as connection:
+    existing = {column["name"] for column in inspect(engine).get_columns("position_history")}
+    for column in PositionHistoryEntry.__table__.columns:
+        if column.name not in existing:
+            column_type = column.type.compile(dialect=engine.dialect)
+            connection.execute(text(f"ALTER TABLE position_history ADD COLUMN {column.name} {column_type}"))
 
 
 def get_session():
