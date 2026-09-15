@@ -36,6 +36,41 @@ class TradeJournalEntry(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PositionHistoryEntry(Base):
+    __tablename__ = "position_history"
+    id = Column(Integer, primary_key=True)
+    position_id = Column(String, unique=True, index=True)
+    mode = Column(String, default="MARKET")
+    status = Column(String, default="OPEN")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    expiry = Column(String, nullable=True)
+    call_buy_strike = Column(Float, nullable=True)
+    call_buy_entry = Column(Float, nullable=True)
+    call_buy_quantity = Column(Integer, nullable=True)
+    call_sell_strike = Column(Float, nullable=True)
+    call_sell_entry = Column(Float, nullable=True)
+    call_sell_quantity = Column(Integer, nullable=True)
+    put_sell_strike = Column(Float, nullable=True)
+    put_sell_entry = Column(Float, nullable=True)
+    put_sell_quantity = Column(Integer, nullable=True)
+    put_buy_strike = Column(Float, nullable=True)
+    put_buy_entry = Column(Float, nullable=True)
+    put_buy_quantity = Column(Integer, nullable=True)
+    initial_net_credit = Column(Float, nullable=True)
+    call_sl = Column(Float, nullable=True)
+    put_sl = Column(Float, nullable=True)
+    entry_nifty_spot = Column(Float, nullable=True)
+    final_nifty_spot = Column(Float, nullable=True)
+    opened_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+    charges = Column(Float, nullable=True)
+    net_pnl = Column(Float, nullable=True)
+    reason_for_closing = Column(Text, nullable=True)
+    legs_json = Column(Text, nullable=True)
+
+
 class DailyPnL(Base):
     __tablename__ = "daily_pnl"
     id = Column(Integer, primary_key=True)

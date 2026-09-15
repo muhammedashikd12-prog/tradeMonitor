@@ -11,11 +11,17 @@
     <div><div class="eyebrow">MANUAL POSITION MONITOR</div><h1>NIFTY IRON CONDOR <span>LIVE MONITOR</span></h1></div>
     <div class="connection-stack"><span class="connection disconnected" id="connection">● DISCONNECTED</span><button class="connect-button" id="connect-fyers">Connect FYERS</button><span class="subtle" id="last-update">Waiting for setup</span></div>
   </header>
+  <nav class="primary-tabs" aria-label="Trading sections">
+    <button class="primary-tab active" type="button" data-tab="LIVE">LIVE TRADING</button>
+    <button class="primary-tab" type="button" data-tab="PAPER">PAPER TRADING</button>
+    <button class="primary-tab" type="button" data-tab="HISTORY">TRADING HISTORY</button>
+  </nav>
   <main>
+    <div id="trading-workspace">
     <section class="setup panel">
-      <div class="section-heading"><div><span class="eyebrow">01 / POSITION</span><h2>Enter your four legs</h2></div><button class="text-button" id="clear-position">Clear position</button></div>
+      <div class="section-heading"><div><span class="eyebrow" id="workspace-eyebrow">01 / LIVE POSITION</span><h2 id="workspace-heading">Enter your four legs</h2></div><div class="inline-actions"><button class="text-button" id="close-position" type="button">Close position</button><button class="text-button" id="clear-position" type="button">Clear position</button></div></div>
       <form id="setup-form">
-        <div class="setup-meta"><label>Expiry <select id="expiry" required><option value="">Loading expiries...</option></select></label><label>Call side SL <input id="call-sl" type="number" min="0" step="0.01" placeholder="Optional ₹"></label><label>Put side SL <input id="put-sl" type="number" min="0" step="0.01" placeholder="Optional ₹"></label></div>
+        <div class="setup-meta"><label>Expiry <select id="expiry" required><option value="">Loading expiries...</option></select></label><input id="mode-select" value="LIVE" type="hidden"><label class="paper-setting">Paper slippage <input id="slippage-points" type="number" min="0" max="2" step="0.01" value="0.05" placeholder="₹ pts"></label><label>Call side SL <input id="call-sl" type="number" min="0" step="0.01" placeholder="Optional ₹"></label><label>Put side SL <input id="put-sl" type="number" min="0" step="0.01" placeholder="Optional ₹"></label></div>
         <div class="leg-grid">
           <fieldset class="leg-card buy"><legend>CALL BUY <small>HEDGE</small></legend><input data-leg="CALL BUY" data-field="symbol" placeholder="Fyers symbol" readonly required><div class="compact-inputs"><select data-leg="CALL BUY" data-field="strike" data-option-type="CE" required><option value="">Loading option chain...</option></select><input data-leg="CALL BUY" data-field="quantity" type="number" min="1" placeholder="Qty" required><input data-leg="CALL BUY" data-field="entry_price" type="number" min="0" step="0.05" placeholder="Entry ₹" required></div></fieldset>
           <fieldset class="leg-card sell"><legend>CALL SELL <small>SHORT</small></legend><input data-leg="CALL SELL" data-field="symbol" placeholder="Fyers symbol" readonly required><div class="compact-inputs"><select data-leg="CALL SELL" data-field="strike" data-option-type="CE" required><option value="">Loading option chain...</option></select><input data-leg="CALL SELL" data-field="quantity" type="number" min="1" placeholder="Qty" required><input data-leg="CALL SELL" data-field="entry_price" type="number" min="0" step="0.05" placeholder="Entry ₹" required></div></fieldset>
@@ -37,6 +43,11 @@
       <div class="panel card-padding"><span class="eyebrow">MANUAL RISK</span><h2>Alert-only stops</h2><div class="iv-row"><span>Call SL / current</span><strong id="call-sl-status">—</strong></div><div class="iv-row"><span>Put SL / current</span><strong id="put-sl-status">—</strong></div><p class="subtle note">No exit orders are placed by this monitor.</p></div>
       <div class="panel card-padding"><span class="eyebrow">ALERTS</span><h2>What needs attention</h2><ul class="alerts" id="alerts"><li class="subtle">No alerts.</li></ul></div>
     </section>
+    <section class="two-column">
+      <div class="panel card-padding"><div class="section-heading compact-heading"><div><span class="eyebrow">04 / FUND</span><h2>Fund requirement</h2></div><span class="subtle" id="fund-mode-tag">MARKET</span></div><div class="metric-list tiny"><div><span>Gross hedge requirement</span><strong id="gross-hedge">—</strong></div><div><span>Short-leg proceeds</span><strong id="short-proceeds">—</strong></div><div><span>Net initial cash</span><strong id="net-cash">—</strong></div><div><span>Charges</span><strong id="fund-charges">—</strong></div><div><span>Final estimated funds</span><strong id="final-funds">—</strong></div></div></div>
+    </section>
+    </div>
+    <section class="panel card-padding history-tab" id="history-panel"><div class="section-heading compact-heading"><div><span class="eyebrow">TRADING HISTORY</span><h2>Live and paper positions</h2></div><span class="subtle">Stored locally and retained after clearing</span></div><div class="history-list" id="history-list"><div class="subtle">No prior positions yet.</div></div></section>
   </main>
   <footer>Manual input · FYERS live data · P&amp;L and risk visibility · no automatic trades</footer>
   <script src="app.js"></script>
