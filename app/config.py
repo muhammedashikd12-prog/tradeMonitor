@@ -75,9 +75,6 @@ class Settings(BaseSettings):
     operating_mode: str = "analysis"
     execution_mode: str = "off"
 
-    class Config:
-        env_file = ".env"
-
     @property
     def wing_widths(self) -> List[int]:
         return [int(x) for x in self.default_wing_widths.split(",") if x]
